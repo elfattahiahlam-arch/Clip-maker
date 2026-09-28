@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clip Maker</title>
+<style>
+  body { margin: 0; font: 16px/1.5 system-ui, sans-serif; background: #f2f4f8; color: #111827; }
+  main { max-width: 520px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  p.sub { color: #566074; margin: 0 0 20px; }
+  label { display: block; font-weight: 600; margin: 14px 0 6px; }
+  input[type=text] { width: 100%; box-sizing: border-box; padding: 12px; font: inherit; border: 1px solid #c9d0dc; border-radius: 6px; min-height: 44px; }
+  .times { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .check { display: flex; gap: 10px; align-items: center; margin-top: 16px; }
+  .check input { width: 22px; height: 22px; }
+  .check label { margin: 0; font-weight: 500; }
+  button { width: 100%; margin-top: 20px; min-height: 48px; font: 600 16px system-ui; color: #fff; background: #2b4bff; border: 0; border-radius: 6px; cursor: pointer; }
+  button:disabled { opacity: .6; cursor: wait; }
+  #msg { margin-top: 16px; min-height: 24px; }
+  #msg.error { color: #c62828; }
+  video { width: 100%; margin-top: 16px; border-radius: 6px; background: #000; }
+  a.dl { display: block; margin-top: 12px; text-align: center; font-weight: 600; color: #2b4bff; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Clip Maker</h1>
+  <p class="sub">Paste a YouTube link, choose the moment, download the clip.</p>
+
+  <label for="url">YouTube link</label>
+  <input id="url" type="text" inputmode="url" autocomplete="off" placeholder="https://www.youtube.com/watch?v=...">
+
+  <div class="times">
+    <div>
+      <label for="start">Start (like 1:23)</label>
+      <input id="start" type="text" value="0:00" autocomplete="off">
+    </div>
+    <div>
+      <label for="end">End (like 1:53)</label>
+      <input id="end" type="text" value="0:30" autocomplete="off">
+    </div>
+  </div>
+
+  <div class="check">
+    <input id="vertical" type="checkbox" checked>
+    <label for="vertical">Crop to vertical (9:16) for Shorts, Reels, TikTok</label>
+  </div>
+
+  <button id="go">Make clip</button>
+  <div id="msg" role="status" aria-live="polite"></div>
+  <div id="result"></div>
+</main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  function toSeconds(text) {
+    text = text.trim();
+    if (!text) return NaN;
+    const parts = text.split(":").map(Number);
+    if (parts.length > 3 || parts.some((n) => !Number.isFinite(n) || n < 0)) return NaN;
+    return parts.reduce((total, n) => total * 60 + n, 0);
+  }
+
+  $("go").addEventListener("click", async () => {
+    const msg = $("msg");
+    const result = $("result");
+    msg.className = "";
+    result.innerHTML = "";
+
+    const start = toSeconds($("start").value);
+    const end = toSeconds($("end").value);
+    if (Number.isNaN(start) || Number.isNaN(end)) {
+      msg.className = "error";
+      msg.textContent = "Enter times like 1:23.";
+      return;
+    }
+
+    $("go").disabled = true;
+    msg.textContent = "Making your clip. This can take up to a minute.";
+
+    try {
+      const res = await fetch("/api/clip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: $("url").value.trim(),
+          start,
+          end,
+          vertical: $("vertical").checked,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Something went wrong.");
+      }
+
+      const blobUrl = URL.createObjectURL(await res.blob());
+      msg.textContent = "Your clip is ready.";
+      result.innerHTML =
+        '<video controls playsinline src="' + blobUrl + '"></video>' +
+        '<a class="dl" href="' + blobUrl + '" download="clip.mp4">Download clip</a>';
+    } catch (err) {
+      msg.className = "error";
+      msg.textContent = err.message;
+    } finally {
+      $("go").disabled = false;
+    }
+  });
+</script>
+</body>
+</html>
